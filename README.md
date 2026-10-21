@@ -4,7 +4,7 @@
 
 This Java project represents city districts as vertices and roads or service dependencies as weighted edges. The graph uses adjacency lists. Undirected roads are available in both directions, while directed connections have one outgoing arc. Parallel edges and self-loops are preserved. Each logical edge appears once in the edge list.
 
-The project currently implements a disjoint-set union (DSU), Kruskal's and Prim's minimum spanning tree algorithms, topological ordering, and strongly connected components (SCC). The MST algorithms return selected roads, total construction cost, and connectivity. The directed-graph algorithms analyze one-way roads and service dependencies. Later commits will add shortest paths, experiments, plots, and the remaining analysis.
+The project implements a disjoint-set union (DSU), Kruskal's and Prim's minimum spanning tree algorithms, topological ordering, strongly connected components (SCC), and Dijkstra's shortest paths. The MST algorithms return selected roads, total construction cost, and connectivity. The directed-graph algorithms analyze one-way roads and service dependencies. Later commits will add reproducible experiments, plots, and the remaining analysis.
 
 ## How to run
 
@@ -19,11 +19,11 @@ java -cp $classes daa.assignment3.Main --test
 java -cp $classes daa.assignment3.Main --demo
 ```
 
-The test command prints `PASS: 10212 checks`. The demonstration runs both MST algorithms on a four-district graph, then shows a valid topological order, cycle detection, and SCCs on a directed graph.
+The test command prints `PASS: 25847 checks`. The demonstration runs both MST algorithms, shows topological ordering and SCCs, and prints shortest distances and routes from district 0, including an unreachable district.
 
 ## Implementation
 
-`WeightedGraph` stores each input edge once and keeps an adjacency list for every vertex. Its edge and neighbor views are read-only. Weights use `long`, and the graph accepts negative weights because minimum spanning tree algorithms can use them. Dijkstra's algorithm will require non-negative weights when it is added.
+`WeightedGraph` stores each input edge once and keeps an adjacency list for every vertex. Its edge and neighbor views are read-only. Weights use `long`, and the graph accepts negative weights because minimum spanning tree algorithms can use them. Dijkstra rejects a graph containing any negative edge.
 
 `DisjointSetUnion` starts with one component per vertex. `find` compresses paths, and `union` attaches the smaller component to the larger one. A repeated union returns `false`; a successful union reduces the component count.
 
@@ -33,6 +33,10 @@ Each result also records operation counts: examined edges or adjacency arcs, ord
 
 `TopologicalSort` uses Kahn's algorithm: it repeatedly removes a vertex with zero in-degree. If fewer than `V` vertices can be removed, the graph has a cycle and the result contains no order. `Kosaraju` finds SCCs with an iterative depth-first search, a reversed adjacency list, and a second iterative search in decreasing finish order. Both algorithms require a directed graph. Their metrics count vertex visits and examined arcs; topological ordering counts each edge during in-degree construction and processing, while SCC counts it during both searches and reversal.
 
+`Dijkstra` starts from a selected district and uses a binary priority queue to process the next smallest tentative distance. A better route updates that district's distance and predecessor; stale queue entries are skipped. The result provides an optional distance and a vertex-by-vertex path for each district. An unreachable district has no distance and an empty path. A separate reachability flag allows `Long.MAX_VALUE` to be a valid distance. Distance addition throws on `long` overflow instead of silently wrapping. Metrics count examined arcs, successful relaxations, queue offers and polls, and ordering comparisons.
+
+Dijkstra's greedy choice relies on non-negative weights: with a negative road, a route processed later could reduce a distance already treated as final. The implementation checks all logical edges before starting and rejects negative weights.
+
 ## Complexity analysis
 
 For `V` vertices and `E` logical edges, the graph uses `O(V + E)` space and adds an edge in `O(1)` amortized time. A DSU stores `O(V)` data. With path compression and union by size, a sequence of `m` DSU operations takes `O(m α(V))` time, where `α` is the inverse Ackermann function.
@@ -41,11 +45,15 @@ Kruskal sorts `E` edges in `O(E log E)` time and performs at most `E` DSU unions
 
 Kahn's topological ordering takes `O(V + E)` time and `O(V)` extra space for in-degrees, its queue, and the output order. Kosaraju's SCC algorithm takes `O(V + E)` time and `O(V + E)` extra space for the reversed adjacency list, visited arrays, search stacks, and components. These bounds assume adjacency lists; both searches visit each vertex and edge a constant number of times.
 
+Dijkstra first checks all `E` edges for non-negative weights. With adjacency lists and a lazy binary heap, it then takes `O(V + E log E)` time and `O(V + E)` extra space in the worst case. Each successful relaxation adds one queue entry; a previously queued entry may become stale. For a simple graph, this is commonly written `O((V + E) log V)`. The algorithm scans only vertices reachable from the chosen source after the initial weight check.
+
 ## Testing
 
 The correctness suite checks directed and undirected adjacency, parallel edges, self-loops, a single-vertex graph, invalid vertex indices, read-only edge access, and DSU behavior. MST cases cover connected and disconnected graphs, multiple valid MSTs, duplicate and negative weights, a single vertex, rejection of directed graphs, and total-weight overflow. On 100 reproducible connected graphs, the suite compares Kruskal's and Prim's weights and verifies that each result is acyclic and spans every input component.
 
 Directed-graph tests check valid orders on DAGs, rejection of cycles and self-loops, and the SCC partition of a graph with three components. They also cover 50 reproducible DAGs with added back edges. For 60 other small directed graphs, SCC membership is checked against independently computed mutual reachability. Every vertex must belong to exactly one SCC.
+
+Shortest-path tests cover known distances and routes, directed and undirected graphs, cycles and zero weights, a single vertex, unreachable vertices, negative-edge rejection, invalid source and target indices, `Long.MAX_VALUE`, and overflow. On 100 reproducible small graphs, distances from every source are compared with an independent Bellman-Ford implementation. Each reported path is checked against actual graph edges and its reported distances.
 
 ## AI acknowledgement
 

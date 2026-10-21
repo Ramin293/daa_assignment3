@@ -5,6 +5,7 @@ import daa.assignment3.connectivity.TopologicalSort;
 import daa.assignment3.graph.WeightedGraph;
 import daa.assignment3.mst.Kruskal;
 import daa.assignment3.mst.Prim;
+import daa.assignment3.shortestpath.Dijkstra;
 
 public final class Main {
     private Main() {}
@@ -42,6 +43,19 @@ public final class Main {
         dependencies.addEdge(2, 1, 1);
         System.out.println("Cycle detected: " + TopologicalSort.run(dependencies).hasCycle());
         System.out.println("Strongly connected components: " + Kosaraju.run(dependencies).components());
+
+        WeightedGraph routes = new WeightedGraph(5, true);
+        routes.addEdge(0, 1, 4);
+        routes.addEdge(0, 2, 1);
+        routes.addEdge(2, 1, 2);
+        routes.addEdge(1, 3, 1);
+        var shortest = Dijkstra.run(routes, 0);
+        for (int district = 0; district < routes.vertexCount(); district++) {
+            String distance = shortest.distanceTo(district).isPresent()
+                    ? Long.toString(shortest.distanceTo(district).getAsLong()) : "unreachable";
+            System.out.println("Route 0 -> " + district + ": " + distance
+                    + " | path=" + shortest.pathTo(district));
+        }
     }
 
     private static void printHelp() {

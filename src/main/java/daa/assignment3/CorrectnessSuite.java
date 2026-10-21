@@ -10,6 +10,8 @@ import daa.assignment3.graph.WeightedEdge;
 import daa.assignment3.mst.Kruskal;
 import daa.assignment3.mst.MstResult;
 import daa.assignment3.mst.Prim;
+import daa.assignment3.shortestpath.Dijkstra;
+import daa.assignment3.shortestpath.ShortestPathResult;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
@@ -25,6 +27,7 @@ public final class CorrectnessSuite {
         disjointSets();
         minimumSpanningTrees();
         directedConnectivity();
+        shortestPaths();
         return "PASS: " + checks + " checks";
     }
 
@@ -302,6 +305,131 @@ public final class CorrectnessSuite {
                 "Kosaraju visits every vertex in both passes");
         require(result.metrics().edgeExaminations() == 3L * graph.edgeCount(),
                 "Kosaraju examines each edge in three phases");
+    }
+
+    private static void shortestPaths() {
+        WeightedGraph routes = new WeightedGraph(7, true);
+        routes.addEdge(0, 1, 7);
+        routes.addEdge(0, 2, 9);
+        routes.addEdge(0, 5, 14);
+        routes.addEdge(1, 2, 10);
+        routes.addEdge(1, 3, 15);
+        routes.addEdge(2, 3, 11);
+        routes.addEdge(2, 5, 2);
+        routes.addEdge(3, 4, 6);
+        routes.addEdge(5, 4, 9);
+        ShortestPathResult known = Dijkstra.run(routes, 0);
+        require(known.distanceTo(0).orElseThrow() == 0, "Source distance is zero");
+        require(known.distanceTo(1).orElseThrow() == 7, "Distance to vertex 1");
+        require(known.distanceTo(2).orElseThrow() == 9, "Distance to vertex 2");
+        require(known.distanceTo(3).orElseThrow() == 20, "Distance to vertex 3");
+        require(known.distanceTo(4).orElseThrow() == 20, "Distance to vertex 4");
+        require(known.distanceTo(5).orElseThrow() == 11, "Distance to vertex 5");
+        require(known.pathTo(4).equals(List.of(0, 2, 5, 4)), "Shortest route is reconstructed");
+        require(known.pathTo(0).equals(List.of(0)), "Source path contains only source");
+        require(known.distanceTo(6).isEmpty(), "Unreachable distance is absent");
+        require(known.pathTo(6).isEmpty(), "Unreachable path is empty");
+        require(known.metrics().queueOffers() == known.metrics().queuePolls(),
+                "Dijkstra drains its priority queue");
+        expectThrows(IndexOutOfBoundsException.class, () -> known.pathTo(7));
+        expectThrows(IndexOutOfBoundsException.class, () -> Dijkstra.run(routes, -1));
+
+        WeightedGraph roads = new WeightedGraph(3, false);
+        roads.addEdge(0, 1, 4);
+        roads.addEdge(1, 2, 1);
+        roads.addEdge(0, 2, 10);
+        require(Dijkstra.run(roads, 2).distanceTo(0).orElseThrow() == 5,
+                "Dijkstra handles undirected roads");
+
+        WeightedGraph single = new WeightedGraph(1, true);
+        require(Dijkstra.run(single, 0).pathTo(0).equals(List.of(0)),
+                "Single-vertex path is valid");
+
+        WeightedGraph negative = new WeightedGraph(3, true);
+        negative.addEdge(1, 2, -1);
+        expectThrows(IllegalArgumentException.class, () -> Dijkstra.run(negative, 0));
+
+        WeightedGraph maximum = new WeightedGraph(2, true);
+        maximum.addEdge(0, 1, Long.MAX_VALUE);
+        require(Dijkstra.run(maximum, 0).distanceTo(1).orElseThrow() == Long.MAX_VALUE,
+                "Maximum long distance remains reachable");
+
+        WeightedGraph overflow = new WeightedGraph(3, true);
+        overflow.addEdge(0, 1, Long.MAX_VALUE);
+        overflow.addEdge(1, 2, 1);
+        expectThrows(ArithmeticException.class, () -> Dijkstra.run(overflow, 0));
+
+        Random random = new Random(20261023L);
+        for (int trial = 0; trial < 100; trial++) {
+            int vertices = 1 + random.nextInt(9);
+            WeightedGraph generated = new WeightedGraph(vertices, trial % 2 == 0);
+            for (int edge = 0; edge < 2 * vertices; edge++) {
+                generated.addEdge(random.nextInt(vertices), random.nextInt(vertices),
+                        random.nextInt(21));
+            }
+            for (int source = 0; source < vertices; source++) {
+                checkAgainstBellmanFord(generated, source);
+            }
+        }
+    }
+
+    private static void checkAgainstBellmanFord(WeightedGraph graph, int source) {
+        long[] expected = new long[graph.vertexCount()];
+        boolean[] reached = new boolean[graph.vertexCount()];
+        reached[source] = true;
+        for (int pass = 1; pass < graph.vertexCount(); pass++) {
+            boolean changed = false;
+            for (WeightedEdge edge : graph.edges()) {
+                changed |= relaxReference(edge.from(), edge.to(), edge.weight(), expected, reached);
+                if (!graph.isDirected()) {
+                    changed |= relaxReference(edge.to(), edge.from(), edge.weight(), expected, reached);
+                }
+            }
+            if (!changed) {
+                break;
+            }
+        }
+
+        ShortestPathResult actual = Dijkstra.run(graph, source);
+        for (int vertex = 0; vertex < graph.vertexCount(); vertex++) {
+            require(actual.isReachable(vertex) == reached[vertex], "Reachability matches Bellman-Ford");
+            if (!reached[vertex]) {
+                require(actual.distanceTo(vertex).isEmpty(), "Unreachable distance is absent");
+                require(actual.pathTo(vertex).isEmpty(), "Unreachable route is empty");
+                continue;
+            }
+            require(actual.distanceTo(vertex).orElseThrow() == expected[vertex],
+                    "Distance matches Bellman-Ford");
+            List<Integer> path = actual.pathTo(vertex);
+            require(path.get(0) == source && path.get(path.size() - 1) == vertex,
+                    "Route has correct endpoints");
+            require(path.size() <= graph.vertexCount(), "Route has no repeated vertex");
+            for (int index = 1; index < path.size(); index++) {
+                int from = path.get(index - 1);
+                int to = path.get(index);
+                long difference = actual.distanceTo(to).orElseThrow()
+                        - actual.distanceTo(from).orElseThrow();
+                boolean edgeFound = graph.neighbors(from).stream().anyMatch(arc ->
+                        arc.to() == to && arc.weight() == difference);
+                require(edgeFound, "Route follows a matching weighted edge");
+            }
+        }
+        require(actual.metrics().queueOffers() == actual.metrics().queuePolls(),
+                "Dijkstra drains its priority queue");
+    }
+
+    private static boolean relaxReference(int from, int to, long weight,
+            long[] distance, boolean[] reached) {
+        if (!reached[from]) {
+            return false;
+        }
+        long candidate = distance[from] + weight;
+        if (reached[to] && candidate >= distance[to]) {
+            return false;
+        }
+        reached[to] = true;
+        distance[to] = candidate;
+        return true;
     }
 
     private static void require(boolean condition, String message) {
