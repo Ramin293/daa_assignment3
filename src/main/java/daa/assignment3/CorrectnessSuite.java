@@ -1,11 +1,17 @@
 package daa.assignment3;
 
 import daa.assignment3.dsu.DisjointSetUnion;
+import daa.assignment3.connectivity.Kosaraju;
+import daa.assignment3.connectivity.SccResult;
+import daa.assignment3.connectivity.TopologicalResult;
+import daa.assignment3.connectivity.TopologicalSort;
 import daa.assignment3.graph.WeightedGraph;
 import daa.assignment3.graph.WeightedEdge;
 import daa.assignment3.mst.Kruskal;
 import daa.assignment3.mst.MstResult;
 import daa.assignment3.mst.Prim;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Random;
 
 public final class CorrectnessSuite {
@@ -18,6 +24,7 @@ public final class CorrectnessSuite {
         graphRepresentation();
         disjointSets();
         minimumSpanningTrees();
+        directedConnectivity();
         return "PASS: " + checks + " checks";
     }
 
@@ -169,6 +176,132 @@ public final class CorrectnessSuite {
             require(forest.find(edge.from()) == forest.find(edge.to()),
                     "Selected forest spans each input component");
         }
+    }
+
+    private static void directedConnectivity() {
+        WeightedGraph dag = new WeightedGraph(6, true);
+        dag.addEdge(0, 2, 1);
+        dag.addEdge(1, 2, 1);
+        dag.addEdge(2, 3, 1);
+        dag.addEdge(2, 4, 1);
+        dag.addEdge(3, 5, 1);
+        dag.addEdge(4, 5, 1);
+        checkTopologicalOrder(dag);
+        checkComponents(dag, Kosaraju.run(dag));
+
+        WeightedGraph cycle = new WeightedGraph(6, true);
+        cycle.addEdge(0, 1, 1);
+        cycle.addEdge(1, 2, 1);
+        cycle.addEdge(2, 0, 1);
+        cycle.addEdge(2, 3, 1);
+        cycle.addEdge(3, 4, 1);
+        cycle.addEdge(4, 3, 1);
+        cycle.addEdge(4, 5, 1);
+        require(TopologicalSort.run(cycle).hasCycle(), "A cycle prevents topological ordering");
+        require(TopologicalSort.run(cycle).order().isEmpty(), "Cyclic graph has no partial order");
+        SccResult components = Kosaraju.run(cycle);
+        checkComponents(cycle, components);
+        require(components.components().size() == 3, "Graph has three SCCs");
+
+        WeightedGraph selfLoop = new WeightedGraph(1, true);
+        selfLoop.addEdge(0, 0, 1);
+        require(TopologicalSort.run(selfLoop).hasCycle(), "A self-loop is a cycle");
+        checkComponents(selfLoop, Kosaraju.run(selfLoop));
+        checkTopologicalOrder(new WeightedGraph(1, true));
+
+        WeightedGraph undirected = new WeightedGraph(2, false);
+        expectThrows(IllegalArgumentException.class, () -> TopologicalSort.run(undirected));
+        expectThrows(IllegalArgumentException.class, () -> Kosaraju.run(undirected));
+
+        Random random = new Random(20261022L);
+        for (int trial = 0; trial < 50; trial++) {
+            int vertices = 2 + random.nextInt(7);
+            WeightedGraph generated = new WeightedGraph(vertices, true);
+            for (int vertex = 0; vertex + 1 < vertices; vertex++) {
+                generated.addEdge(vertex, vertex + 1, 1);
+            }
+            for (int extra = 0; extra < vertices; extra++) {
+                int from = random.nextInt(vertices - 1);
+                int to = from + 1 + random.nextInt(vertices - from - 1);
+                generated.addEdge(from, to, 1);
+            }
+            checkTopologicalOrder(generated);
+            checkComponents(generated, Kosaraju.run(generated));
+            generated.addEdge(vertices - 1, 0, 1);
+            require(TopologicalSort.run(generated).hasCycle(), "Added back edge creates a cycle");
+            require(Kosaraju.run(generated).components().size() == 1,
+                    "Chain plus back edge is strongly connected");
+        }
+
+        for (int trial = 0; trial < 60; trial++) {
+            int vertices = 1 + random.nextInt(8);
+            WeightedGraph generated = new WeightedGraph(vertices, true);
+            for (int edge = 0; edge < 2 * vertices; edge++) {
+                generated.addEdge(random.nextInt(vertices), random.nextInt(vertices), 1);
+            }
+            checkComponents(generated, Kosaraju.run(generated));
+        }
+    }
+
+    private static void checkTopologicalOrder(WeightedGraph graph) {
+        TopologicalResult result = TopologicalSort.run(graph);
+        require(!result.hasCycle(), "DAG has a topological ordering");
+        require(result.order().size() == graph.vertexCount(), "Order contains every vertex");
+        int[] position = new int[graph.vertexCount()];
+        Arrays.fill(position, -1);
+        for (int index = 0; index < result.order().size(); index++) {
+            int vertex = result.order().get(index);
+            require(position[vertex] == -1, "Order contains each vertex once");
+            position[vertex] = index;
+        }
+        for (WeightedEdge edge : graph.edges()) {
+            require(position[edge.from()] < position[edge.to()], "Every edge points forward");
+        }
+        require(result.metrics().edgeExaminations() == 2L * graph.edgeCount(),
+                "Kahn examines each edge in both phases");
+    }
+
+    private static void checkComponents(WeightedGraph graph, SccResult result) {
+        int vertices = graph.vertexCount();
+        int[] membership = new int[vertices];
+        Arrays.fill(membership, -1);
+        for (int index = 0; index < result.components().size(); index++) {
+            List<Integer> component = result.components().get(index);
+            require(!component.isEmpty(), "SCC is nonempty");
+            for (int vertex : component) {
+                require(membership[vertex] == -1, "Vertex belongs to one SCC");
+                membership[vertex] = index;
+            }
+        }
+        for (int vertex = 0; vertex < vertices; vertex++) {
+            require(membership[vertex] != -1, "Every vertex belongs to an SCC");
+        }
+
+        boolean[][] reachable = new boolean[vertices][vertices];
+        for (int vertex = 0; vertex < vertices; vertex++) {
+            reachable[vertex][vertex] = true;
+        }
+        for (WeightedEdge edge : graph.edges()) {
+            reachable[edge.from()][edge.to()] = true;
+        }
+        for (int via = 0; via < vertices; via++) {
+            for (int from = 0; from < vertices; from++) {
+                for (int to = 0; to < vertices; to++) {
+                    reachable[from][to] |= reachable[from][via] && reachable[via][to];
+                }
+            }
+        }
+        for (int from = 0; from < vertices; from++) {
+            for (int to = 0; to < vertices; to++) {
+                boolean mutuallyReachable = reachable[from][to] && reachable[to][from];
+                require((membership[from] == membership[to]) == mutuallyReachable,
+                        "SCC matches mutual reachability");
+            }
+        }
+        require(result.metrics().vertexVisits() == 2L * vertices,
+                "Kosaraju visits every vertex in both passes");
+        require(result.metrics().edgeExaminations() == 3L * graph.edgeCount(),
+                "Kosaraju examines each edge in three phases");
     }
 
     private static void require(boolean condition, String message) {
