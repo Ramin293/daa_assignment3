@@ -4,9 +4,14 @@ import java.util.Objects;
 
 /** Disjoint sets with path compression and union by component size. */
 public final class DisjointSetUnion {
+    public record Metrics(long findCalls, long parentTraversals, long unionCalls) {}
+
     private final int[] parent;
     private final int[] size;
     private int componentCount;
+    private long findCalls;
+    private long parentTraversals;
+    private long unionCalls;
 
     public DisjointSetUnion(int elementCount) {
         if (elementCount < 1) {
@@ -23,8 +28,10 @@ public final class DisjointSetUnion {
 
     public int find(int element) {
         Objects.checkIndex(element, parent.length);
+        findCalls++;
         int root = element;
         while (root != parent[root]) {
+            parentTraversals++;
             root = parent[root];
         }
         while (element != root) {
@@ -37,6 +44,7 @@ public final class DisjointSetUnion {
 
     /** Returns true exactly when two previously separate components merge. */
     public boolean union(int first, int second) {
+        unionCalls++;
         int firstRoot = find(first);
         int secondRoot = find(second);
         if (firstRoot == secondRoot) {
@@ -59,5 +67,9 @@ public final class DisjointSetUnion {
 
     public int sizeOf(int element) {
         return size[find(element)];
+    }
+
+    public Metrics metrics() {
+        return new Metrics(findCalls, parentTraversals, unionCalls);
     }
 }
