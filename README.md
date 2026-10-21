@@ -4,7 +4,7 @@
 
 This Java project represents city districts as vertices and roads or service dependencies as weighted edges. The graph uses adjacency lists. Undirected roads are available in both directions, while directed connections have one outgoing arc. Parallel edges and self-loops are preserved. Each logical edge appears once in the edge list.
 
-The project implements a disjoint-set union (DSU), Kruskal's and Prim's minimum spanning tree algorithms, topological ordering, strongly connected components (SCC), and Dijkstra's shortest paths. The MST algorithms return selected roads, total construction cost, and connectivity. The directed-graph algorithms analyze one-way roads and service dependencies. Later commits will add reproducible experiments, plots, and the remaining analysis.
+The project implements a disjoint-set union (DSU), Kruskal's and Prim's minimum spanning tree algorithms, topological ordering, strongly connected components (SCC), and Dijkstra's shortest paths. The MST algorithms return selected roads, total construction cost, and connectivity. The directed-graph algorithms analyze one-way roads and service dependencies. It also runs reproducible experiments on the three graph sizes required by the assignment. Plots and the final discussion will follow in the last commit.
 
 ## How to run
 
@@ -17,9 +17,10 @@ $sources = Get-ChildItem src/main/java -Filter *.java -Recurse | ForEach-Object 
 javac -encoding UTF-8 -d $classes $sources
 java -cp $classes daa.assignment3.Main --test
 java -cp $classes daa.assignment3.Main --demo
+java -cp $classes daa.assignment3.Main --benchmark results/results.csv
 ```
 
-The test command prints `PASS: 25847 checks`. The demonstration runs both MST algorithms, shows topological ordering and SCCs, and prints shortest distances and routes from district 0, including an unreachable district.
+The test command prints `PASS: 25903 checks`. The demonstration runs both MST algorithms, shows topological ordering and SCCs, and prints shortest distances and routes from district 0, including an unreachable district. The benchmark command regenerates the raw CSV and `results/tables/summary.md`.
 
 ## Implementation
 
@@ -47,6 +48,16 @@ Kahn's topological ordering takes `O(V + E)` time and `O(V)` extra space for in-
 
 Dijkstra first checks all `E` edges for non-negative weights. With adjacency lists and a lazy binary heap, it then takes `O(V + E log E)` time and `O(V + E)` extra space in the worst case. Each successful relaxation adds one queue entry; a previously queued entry may become stale. For a simple graph, this is commonly written `O((V + E) log V)`. The algorithm scans only vertices reachable from the chosen source after the initial weight check.
 
+## Experimental setup
+
+The three configurations are small (`V=10, E=30`), medium (`V=100, E=500`), and large (`V=1,000, E=5,000`). Every generator uses fixed seed `42`, unique edges, and integer weights from 1 to 1,000. The undirected graph begins with a random spanning tree and adds random roads until it has exactly `E` edges, so MST inputs are connected. The directed DAG begins with the chain `0 -> 1 -> ... -> V-1` and adds only forward edges. The cyclic directed graph keeps that chain, adds forward edges, and finishes with `V-1 -> 0`; it has exactly `E` edges and one SCC. Dijkstra runs from vertex 0 on the cyclic directed graph. Graph generation is excluded from timing.
+
+Each of the seven algorithm/graph combinations receives three unmeasured warm-up runs and five measured runs at each size. `System.nanoTime()` surrounds only the algorithm call; the arithmetic mean of five elapsed times is reported. The benchmark checks that outputs and operation counts agree across repetitions. Timings vary with the JVM, operating system, and hardware. The directed cycle is deliberate: Kahn's algorithm can detect it after the in-degree scan without dequeuing any vertex.
+
+## Results
+
+The [raw CSV](results/results.csv) contains all 21 combinations, mean nanoseconds, operation counts, and result summaries. The [tables](results/tables/summary.md) compare Kruskal with Prim, DAGs with cyclic graphs, and Dijkstra across the three sizes. Kruskal and Prim return the same MST weight for every size. SCC examines each directed edge during both searches and when building the reverse graph. Dijkstra examines the 5,000 arcs of the large cyclic graph from source 0. The final commit will add plots and interpret timing differences against the complexity bounds.
+
 ## Testing
 
 The correctness suite checks directed and undirected adjacency, parallel edges, self-loops, a single-vertex graph, invalid vertex indices, read-only edge access, and DSU behavior. MST cases cover connected and disconnected graphs, multiple valid MSTs, duplicate and negative weights, a single vertex, rejection of directed graphs, and total-weight overflow. On 100 reproducible connected graphs, the suite compares Kruskal's and Prim's weights and verifies that each result is acyclic and spans every input component.
@@ -55,6 +66,8 @@ Directed-graph tests check valid orders on DAGs, rejection of cycles and self-lo
 
 Shortest-path tests cover known distances and routes, directed and undirected graphs, cycles and zero weights, a single vertex, unreachable vertices, negative-edge rejection, invalid source and target indices, `Long.MAX_VALUE`, and overflow. On 100 reproducible small graphs, distances from every source are compared with an independent Bellman-Ford implementation. Each reported path is checked against actual graph edges and its reported distances.
 
+Generator tests check edge counts, repeatability with the same seed, undirected connectivity, DAG ordering, the planned cycle and SCC count, source reachability, and invalid configurations. The benchmark also validates its graphs and compares both MST weights before timing.
+
 ## AI acknowledgement
 
-AI assisted with the initial code and documentation. Benchmark numbers and conclusions will be based on executed experiments in later commits.
+AI assisted with the code, documentation, and experiment setup. The numeric values in the CSV and tables were obtained by running the Java benchmark; they were not invented by AI.

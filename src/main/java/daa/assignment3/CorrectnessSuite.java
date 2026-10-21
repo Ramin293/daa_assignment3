@@ -5,6 +5,7 @@ import daa.assignment3.connectivity.Kosaraju;
 import daa.assignment3.connectivity.SccResult;
 import daa.assignment3.connectivity.TopologicalResult;
 import daa.assignment3.connectivity.TopologicalSort;
+import daa.assignment3.experiment.ExperimentGraphs;
 import daa.assignment3.graph.WeightedGraph;
 import daa.assignment3.graph.WeightedEdge;
 import daa.assignment3.mst.Kruskal;
@@ -28,6 +29,7 @@ public final class CorrectnessSuite {
         minimumSpanningTrees();
         directedConnectivity();
         shortestPaths();
+        generatedExperimentGraphs();
         return "PASS: " + checks + " checks";
     }
 
@@ -430,6 +432,36 @@ public final class CorrectnessSuite {
         reached[to] = true;
         distance[to] = candidate;
         return true;
+    }
+
+    private static void generatedExperimentGraphs() {
+        WeightedGraph roads = ExperimentGraphs.connectedUndirected(10, 30, 42);
+        WeightedGraph repeatedRoads = ExperimentGraphs.connectedUndirected(10, 30, 42);
+        require(roads.edgeCount() == 30, "Undirected generator makes the requested edge count");
+        require(roads.edges().equals(repeatedRoads.edges()), "Undirected generation is reproducible");
+        require(Kruskal.run(roads).connected(), "Generated road graph is connected");
+
+        WeightedGraph dag = ExperimentGraphs.directed(10, 30, 42, false);
+        WeightedGraph repeatedDag = ExperimentGraphs.directed(10, 30, 42, false);
+        require(dag.edgeCount() == 30, "DAG generator makes the requested edge count");
+        require(dag.edges().equals(repeatedDag.edges()), "DAG generation is reproducible");
+        checkTopologicalOrder(dag);
+        require(Kosaraju.run(dag).components().size() == 10, "Generated DAG has singleton SCCs");
+
+        WeightedGraph cyclic = ExperimentGraphs.directed(10, 30, 42, true);
+        WeightedGraph repeatedCyclic = ExperimentGraphs.directed(10, 30, 42, true);
+        require(cyclic.edgeCount() == 30, "Cyclic generator makes the requested edge count");
+        require(cyclic.edges().equals(repeatedCyclic.edges()), "Cyclic generation is reproducible");
+        require(TopologicalSort.run(cyclic).hasCycle(), "Generated back edge creates a cycle");
+        require(Kosaraju.run(cyclic).components().size() == 1,
+                "Generated cyclic graph is strongly connected");
+        require(Dijkstra.run(cyclic, 0).isReachable(9),
+                "Generated chain reaches the last vertex");
+
+        expectThrows(IllegalArgumentException.class,
+                () -> ExperimentGraphs.connectedUndirected(10, 46, 42));
+        expectThrows(IllegalArgumentException.class,
+                () -> ExperimentGraphs.directed(3, 2, 42, true));
     }
 
     private static void require(boolean condition, String message) {

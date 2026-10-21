@@ -2,19 +2,23 @@ package daa.assignment3;
 
 import daa.assignment3.connectivity.Kosaraju;
 import daa.assignment3.connectivity.TopologicalSort;
+import daa.assignment3.experiment.Benchmark;
 import daa.assignment3.graph.WeightedGraph;
 import daa.assignment3.mst.Kruskal;
 import daa.assignment3.mst.Prim;
 import daa.assignment3.shortestpath.Dijkstra;
+import java.nio.file.Path;
 
 public final class Main {
     private Main() {}
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         String command = args.length == 0 ? "--help" : args[0];
         switch (command) {
             case "--test" -> System.out.println(CorrectnessSuite.runAll());
             case "--demo" -> demo();
+            case "--benchmark" -> Benchmark.run(Path.of(
+                    args.length > 1 ? args[1] : "results/results.csv"));
             case "--help" -> printHelp();
             default -> throw new IllegalArgumentException("Unknown command: " + command);
         }
@@ -59,6 +63,7 @@ public final class Main {
     }
 
     private static void printHelp() {
-        System.out.println("Usage: java -cp target/classes daa.assignment3.Main --test | --demo");
+        System.out.println("Usage: java -cp target/classes daa.assignment3.Main "
+                + "--test | --demo | --benchmark [output.csv]");
     }
 }
